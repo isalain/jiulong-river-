@@ -1,0 +1,1183 @@
+# For Packages, please cite the original sources
+#ALL FIGURES DONE USING R SOFTWARE
+setwd("C:/JLR_ANALYSES")#a folder in "C" where all data are stored
+##Map of China##
+library(ggplot2)
+China <-  map_data("world" ,  region=c("China", "Taiwan"))
+ggplot(China,  aes(x=long,  y=lat,  group=group,  fill=region)) +
+  geom_polygon(colour="black" )+scale_fill_grey(start=.7,  end=.7)+theme_bw()
+ggsave("China.pdf",  width=18,  height=18,  units="cm")
+##################################################################################
+# Spearman correlation plot
+setwd("C:/JLR_ANALYSES/cor_plot")
+All_Wet=read.table("All_Wet.txt",row.names=1,header=T)#all data of the wet season
+All_Dry=read.table("All_Dry.txt",row.names=1,header=T)#all data of the dry season
+library(Hmisc)
+library(corrplot)
+library(Cairo)#for better pdf
+library(cairoDevice)#for better pdf
+head(All_Wet)
+head(All_Dry)
+corr_all_wet<-rcorr(as.matrix(All_Wet[,1:26])) 
+corr_all_dry<-rcorr(as.matrix(All_Dry[,1:26]))
+wet_plot<-corrplot(corr_all_wet$r, type="lower", order="original", tl.col="black", tl.srt=90,pch=TRUE )
+dry_plot<-corrplot(corr_all_dry$r, type="upper", order="original", tl.col="black", tl.srt=90,pch=TRUE )
+########################################################################################
+#Fig.1c Relative contribution of Phytoplankton taxa
+setwd("C:/JLR_ANALYSES/phyt_phyla")
+library(ggplot2)
+library(gcookbook)
+library(plyr)
+rel_ab=read.table("relative_abundance.txt",row.names=1,header=T)#relative abundance of biomass data
+p<-ggplot(rel_ab,  aes(x=Site,  y=Biomass,  fill=Phyla)) +
+  geom_bar(stat="identity" )
+j<-p+theme_bw()
+j + facet_grid(.~ Season)+ coord_flip()
+ggsave("j.pdf",  width=18,  height=18,  units="cm")
+########################################################################################
+#Fig 2a NMDS and Envifit for phytoplankton
+setwd("C:/JLR_ANALYSES/nmds_phyt")
+library(ggplot2)
+library(vegan)
+library(grid)
+Phy<-read.table("Phyt.txt", header=T) 
+Env<-read.table("Env.txt", header=T) 
+Environment<-read.table("EnvUntrans.txt", header=T) 
+group<-read.table("groups.txt", header=T) 
+P<- sqrt(Phy)
+sol <- metaMDS(P,"bray")
+NMDS = data.frame(MDS1 = sol$points[,1], MDS2 = sol$points[,2])
+ef<-envfit(sol$points, Env, perm=1000)
+ef.df<-as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r))
+ef.df$species<-rownames(ef.df)
+A <- as.list(ef$vectors)
+pvals<-as.data.frame(A$pvals)
+arrows<-as.data.frame(A$arrows*sqrt(A$r))
+C<-cbind(arrows, pvals)
+Cred<-subset(C,pvals<0.001)
+Cred <- cbind(Cred, Species = rownames(Cred))
+phyt_nmds<-ggplot(data = NMDS, aes(MDS1, MDS2)) + 
+  geom_point(aes(shape=group$Season, color=Environment$Temp, size=2))+
+  geom_segment(data=Cred,aes(x=0,xend=MDS1,y=0,yend=MDS2),
+               arrow = arrow(length = unit(0.3, "cm" )),  size = 0.5,colour="black")
+phyt_nmds+ geom_text(data=ef.df,aes(x=MDS1,y=MDS2,label=species),size=5)+coord_fixed()+theme_bw()
+
+ggsave("phyt_nmds.pdf",  width=18,  height=18,  units="cm")
+#ANOSIM
+group<-read.table("groups.txt", header=T) 
+P.dist <- vegdist(P, "bray")
+attach(group)
+P.ano<- anosim(P.dist, group$Season)
+summary(P.ano)
+########################################################################################
+#Fig 2b NMDS and Envifit for bacterioplankton
+library(vegan)
+library(ggplot2)
+setwd("C:/JLR_ANALYSES/nmds_bact")
+Bact<-read.table("Bact.txt", header=T) 
+Environment<-read.table("EnvUntrans.txt", header=T) 
+group<-read.table("groups.txt", header=T) 
+sol2 <- metaMDS(Bact,"jaccard")
+NMDS = data.frame(MDS1 = sol2$points[,1], MDS2 = sol2$points[,2])
+ef<-envfit(sol2$points, Env, perm=1000)
+ef.df<-as.data.frame(ef$vectors$arrows*sqrt(ef$vectors$r))
+ef.df$species<-rownames(ef.df)
+A <- as.list(ef$vectors)
+pvals<-as.data.frame(A$pvals)
+arrows<-as.data.frame(A$arrows*sqrt(A$r))
+C<-cbind(arrows, pvals)
+Cred<-subset(C,pvals<0.001)
+Cred<- cbind(Cred, Species = rownames(Cred))
+bact_nmds<-ggplot(data = NMDS, aes(MDS1, MDS2)) + 
+  geom_point(aes(shape=group$Season, color=Environment$Temp, size=2))+
+  geom_segment(data=Cred,aes(x=0,xend=MDS1,y=0,yend=MDS2),
+               arrow = arrow(length = unit(0.3, "cm" )),  size = 0.5,colour="black")
+bact_nmds+ geom_text(data=ef.df,aes(x=MDS1,y=MDS2,label=species),size=5)+coord_fixed()+theme_bw()
+ggsave("bact_nmds.pdf",  width=18,  height=18,  units="cm")
+#ANOSIM
+B.dist <- vegdist(Bact, "jaccard")
+attach(group)
+B.ano<- anosim(B.dist, group$Season)
+summary(B.ano)
+########################################################################################
+##Distance decay relationships (DDRs)
+setwd("C:/JLR_ANALYSES/ddr")
+library(ggplot2)
+library(vegan)
+#BACTERIOPLANKTON
+bact_wet<- read.table("Bact_wet.txt", row.names=1,header=T)
+bact_dry<- read.table("Bact_dry.txt", row.names=1,header=T)
+env_wet<- read.table("Env_wet.txt", row.names=1,header=T)
+env_dry<- read.table("Env_dry.txt", row.names=1,header=T)
+#Get the (dis)simirality matrices
+bact_jaccard_wet<-vegdist(bact_wet, method = "jaccard")
+bact_jaccard_dry<-vegdist(bact_dry, method = "jaccard")
+spa<- read.table("Spa.txt", row.names=1,header=T)
+spa_eucl<-vegdist(spa,method= "euclidean")
+spa_vec<-as.vector(spa_eucl)
+bact_wet_vec<-as.vector(bact_jaccard_wet)
+bact_dry_vec<-as.vector(bact_jaccard_dry)
+bact_spa<-data.frame(spa_vec,bact_wet_vec, bact_dry_vec)
+lm_bact_spa_wet= lm(bact_wet_vec~ spa_vec, data=bact_spa) 
+lm_bact_spa_dry= lm(bact_dry_vec~ spa_vec, data=bact_spa) 
+write.csv(bact_spa, "bact_spa.csv")
+#using euclidean distance
+bact<- read.table("bact_spa.txt", row.names=1,header=T)#re-arrange data in the directory
+bact_ddr<-ggplot(bact, aes(x=Space, y=Bacteria, shape=Season)) + geom_point() +
+  geom_smooth(aes(linetype=Season),method = "lm", colour="blue")+
+  scale_shape_manual(values=c(16,17))+theme_bw()
+#using real distance
+bact2<- read.table("bact_spa2.txt", row.names=1,header=T)#re-arrange data in the directory
+bact_ddr2<-ggplot(bact2, aes(x=Space, y=Bacteria, shape=Season)) + geom_point() +
+  scale_shape_manual(values=c(16,17))+theme_bw()
+#using environmental
+env_eucl_wet<-vegdist(bact_wet, method = "euclidean")
+env_eucl_dry<-vegdist(bact_dry, method = "euclidean")
+env_wet_vec<-as.vector(env_eucl_wet)
+env_dry_vec<-as.vector(env_eucl_dry)
+bact_env<-data.frame(bact_wet_vec,bact_dry_vec, env_wet_vec,env_dry_vec)
+lm_bact_env_wet= lm(bact_wet_vec~ env_wet_vec, data=bact_env) 
+coef(lm_bact_env_wet)
+lm_bact_env_dry= lm(bact_dry_vec~ env_dry_vec, data=bact_env) 
+write.csv(bact_env, "bact_env.csv")
+Bact_env<- read.table("bact_env.txt", row.names=1,header=T)
+bact_ddr3<-ggplot(Bact_env, aes(x=Environment, y=Bacteria, shape=Season)) + geom_point() +theme_bw()
+#Phytoplankton
+phyt_wet<- read.table("Phyt_wet.txt", row.names=1,header=T)
+phyt_dry<- read.table("Phyt_dry.txt", row.names=1,header=T)
+phyt_wet_log<-log1p(phyt_wet)
+phyt_dry_log<-log1p(phyt_dry)
+phyt_bray_wet<-vegdist(bact_wet, method = "bray")
+phyt_bray_dry<-vegdist(bact_dry, method = "bray")
+phyt_wet_vec<-as.vector(phyt_bray_wet)
+phyt_dry_vec<-as.vector(phyt_bray_dry)
+phyt_spa<-data.frame(spa_vec,phyt_wet_vec, phyt_dry_vec)
+lm_phyt_spa_wet= lm(phyt_wet_vec~ spa_vec, data=phyt_spa) 
+lm_phyt_spa_dry= lm(phyt_dry_vec~ spa_vec, data=phyt_spa) 
+write.csv(phyt_spa, "phyt_spa.csv")
+#using euclidean distance
+phyt<- read.table("phyt_spa.txt", row.names=1,header=T)#re-arrange data in the directory
+phyt_ddr<-ggplot(phyt, aes(x=Space, y=Phytoplankton, shape=Season)) + geom_point() +
+  scale_shape_manual(values=c(16,17))+theme_bw()
+#using real distance
+phyt2<- read.table("phyt_spa2.txt", row.names=1,header=T)#re-arrange data in the directory
+phyt_ddr2<-ggplot(phyt2, aes(x=Space, y=Phytoplankton, shape=Season)) + geom_point() +
+  scale_shape_manual(values=c(16,17))+theme_bw()
+#using environmental
+phyt_env<-data.frame(phyt_wet_vec,phyt_dry_vec, env_wet_vec,env_dry_vec)
+lm_phyt_env_wet= lm(phyt_wet_vec~ env_wet_vec, data=phyt_env) 
+lm_phyt_env_dry= lm(phyt_dry_vec~ env_dry_vec, data=phyt_env) 
+write.csv(phyt_env, "phyt_env.csv")
+Phyt_env<- read.table("phyt_env.txt", row.names=1,header=T)
+phyt_ddr3<-ggplot(Phyt_env, aes(x=Environment, y=Phytoplankton, shape=Season)) + geom_point() +theme_bw()
+#Final results(figures and coefficients)
+bact_ddr2
+bact_ddr3
+phyt_ddr2
+phyt_ddr3
+summary(lm_bact_spa_wet)
+summary(lm_bact_spa_dry)
+summary(lm_bact_env_wet)
+summary(lm_bact_env_dry)
+summary(lm_phyt_spa_wet)
+summary(lm_phyt_spa_dry)
+summary(lm_phyt_env_wet)
+summary(lm_phyt_env_dry)
+##################################################################################################################################
+#Mantel and partial Mantel tests
+setwd("C:/JLR_ANALYSES/mantel_test_ecodist")
+library(vegan)
+library(ecodist)
+Phy_wet<-read.table("Phyt_wet.txt", header=T) 
+Phy_dry<-read.table("Phyt_dry.txt", header=T) 
+Bact_wet<-read.table("Bact_wet.txt", header=T) 
+Bact_dry<-read.table("Bact_dry.txt", header=T) 
+Env_wet<-read.table("Env_wet.txt", header=T) 
+Env_dry<-read.table("Env_dry.txt", header=T)
+Spa<-read.table("Spa.txt", header=T)
+
+P_wet<- sqrt(Phy_wet)
+P_dry<- sqrt(Phy_dry)
+Phyt_wet_dist<-vegdist(P_wet, "bray")
+Phyt_dry_dist<-vegdist(P_dry, "bray")
+Bact_wet_dist<-vegdist(Bact_wet, "jaccard")
+Bact_dry_dist<-vegdist(Bact_dry, "jaccard")
+Env_wet_dist<-vegdist(Env_wet, "euclidean")
+Env_dry_dist<-vegdist(Env_dry, "euclidean")
+Spa_dist<-vegdist(Spa, "euclidean")
+
+#Phytoplankton (Bray-Curtis)
+#Wet
+wet_phyt_env<-mantel(Phyt_wet_dist ~Env_wet_dist, nperm=999)
+wet_phyt_spa<-mantel(Phyt_wet_dist ~Spa_dist, nperm=999)
+wet_phyt_envspa<-mantel(Phyt_wet_dist ~Env_wet_dist+Spa_dist, nperm=999)
+wet_phyt_spaenv<-mantel(Phyt_wet_dist ~Spa_dist +Env_wet_dist, nperm=999)
+mantel_phyt_wet<-data.frame(wet_phyt_env,wet_phyt_spa,wet_phyt_envspa,wet_phyt_spaenv)
+write.csv(mantel_phyt_wet, "mantel_phyt_wet.csv")
+#Dry
+dry_phyt_env<-mantel(Phyt_dry_dist ~Env_dry_dist, nperm=999)
+dry_phyt_spa<-mantel(Phyt_dry_dist ~Spa_dist, nperm=999)
+dry_phyt_envspa<-mantel(Phyt_dry_dist ~Env_dry_dist+Spa_dist, nperm=999)
+dry_phyt_spaenv<-mantel(Phyt_dry_dist ~Spa_dist +Env_dry_dist, nperm=999)
+mantel_phyt_dry<-data.frame(dry_phyt_env,dry_phyt_spa,dry_phyt_envspa,dry_phyt_spaenv)
+write.csv(mantel_phyt_dry, "mantel_phyt_dry.csv")
+#Bacterioplankton
+#Wet
+wet_Bact_env<-mantel(Bact_wet_dist ~Env_wet_dist, nperm=999)
+wet_Bact_spa<-mantel(Bact_wet_dist ~Spa_dist, nperm=999)
+wet_Bact_envspa<-mantel(Bact_wet_dist ~Env_wet_dist+Spa_dist, nperm=999)
+wet_Bact_spaenv<-mantel(Bact_wet_dist ~Spa_dist +Env_wet_dist, nperm=999)
+mantel_Bact_wet<-data.frame(wet_Bact_env,wet_Bact_spa,wet_Bact_envspa,wet_Bact_spaenv)
+write.csv(mantel_Bact_wet, "mantel_Bact_wet.csv")
+#Dry
+dry_Bact_env<-mantel(Bact_dry_dist ~Env_dry_dist, nperm=999)
+dry_Bact_spa<-mantel(Bact_dry_dist ~Spa_dist, nperm=999)
+dry_Bact_envspa<-mantel(Bact_dry_dist ~Env_dry_dist+Spa_dist, nperm=999)
+dry_Bact_spaenv<-mantel(Bact_dry_dist ~Spa_dist +Env_dry_dist, nperm=999)
+mantel_Bact_dry<-data.frame(dry_Bact_env,dry_Bact_spa,dry_Bact_envspa,dry_Bact_spaenv)
+write.csv(mantel_Bact_dry, "mantel_Bact_dry.csv")
+##############################################################################################################################################
+#Constructing AEMs and PCNMs as spatial predictors
+setwd("C:/JLR_ANALYSES/aem_pcnms")
+library(AEM)
+library(spacemakeR)
+library(vegan)
+E=read.table("Edges.txt",row.names=1,header=T) #Edge matrix 
+W_dist=read.table("weight_dist.txt",row.names=1,header=T)#Weighting matrix for distance  
+W_dam=read.table("weight_dam.txt",row.names=1,header=T) #Weighting matrix for dams 
+Spa=read.table("Spa.txt",row.names=1,header=T) #Geographical coordinates of sites
+#distance based eigenvectors
+W_dist_vect<-runif(ncol(W_dist))
+edge.aem_dist <- aem(binary.mat=as.matrix(E),weight=W_dist_vect)
+dist_vectors <- edge.aem_dist$vectors
+#dam-based eigenvectors
+W_dam_vect<-runif(ncol(W_dam))
+edge.aem_dam <- aem(binary.mat=as.matrix(E),weight=W_dam_vect)
+dam_vectors <- edge.aem_dist$vectors
+moran.I.multi(dam_vectors, W_dam, test.type="parametric")#2 eigenvectors are selected
+moran.I.multi(dist_vectors, W_dist, test.type="parametric")#2 eigenvectors are selected
+#dbMEM vectors
+#use PCNM and pcoa functions developped by Dray et al.2006
+'PCNM' <- 
+  function(matdist, thresh=NULL, dbMEM=FALSE, moran=NULL, all=FALSE, include.zero=FALSE, silent=FALSE)
+    #
+    # Compute the PCNM or dbMEM eigenfunctions corresponding to 
+    # all eigenvalues (+, 0, -). 
+    #    In PCNM computation, the diagonal of D = 0.
+    #    In dbMEM, the diagonal of D = 4*threshh.
+    #    Distance-based MEM are described in Dray et al. 2006. 
+    #    The name was abbreviated to db-MEM by PPN & PL (subm.)
+    # Input file: distance matrix produced by the function "dist".
+    # Computation of the threshold requires a function of the library "ape".
+    # 
+    # Original PCNM function: Stephane Dray, November 11, 2004
+# The present version: Pierre Legendre, August 2007, January and March 2009
+  {
+    require(vegan)
+    epsilon <- sqrt(.Machine$double.eps) 
+    a <- system.time({
+      if(is.null(moran)) {
+        if(dbMEM) { moran=FALSE } else { moran=TRUE }
+      }
+      single <- FALSE
+      if(moran) {
+        # cat("The site coordinates were computed from 'matdist'.",'\n')
+        pcoa.xy <- pcoa.all(matdist)
+        
+        if(is.na(pcoa.xy$values[2]) | (pcoa.xy$values[2] < epsilon)) {
+          if(!silent) cat("The sites form a straight line on the map.",'\n')
+          xy <- pcoa.xy$vectors
+          single <- TRUE
+        } else {
+          xy <- pcoa.xy$vectors[,1:2]
+        }
+      }
+      
+      matdist <- as.matrix(matdist)
+      n <- nrow(matdist)
+      
+      # Truncation of distance matrix
+      if(is.null(thresh)) {
+        spanning <- vegan::spantree(as.dist(matdist))
+        threshh <- max(spanning$dist)
+        if(!silent) cat("Truncation level =",threshh+0.000001,'\n')
+      } else {
+        threshh = thresh
+        if(!silent) cat("User-provided truncation threshold =",thresh,'\n')
+      }
+      matdist[matdist > threshh] <- 4*threshh
+      
+      if(dbMEM==FALSE) { diagonal <- 0 } else { diagonal <- 4*threshh }
+      
+      mypcnm.all <- pcoa.all(matdist, diagonal=diagonal, all=all, include.zero=include.zero, rn=rownames(matdist))
+      
+      # Compute Moran's I
+      if(moran) {
+        require(AEM)
+        if(single) {
+          nb <- dnearneigh(matrix(c(xy,rep(0,n)),n,2), 0, (threshh + epsilon))
+        } else {
+          nb <- dnearneigh(xy, 0, (threshh + epsilon))
+        }
+        fr.to.pcnm2 <- as.matrix(listw2sn(nb2listw(nb))[,1:2])
+        weight.dist.coord.mat <- as.matrix(1-(as.dist(matdist)/(4*threshh))^2)
+        weight <- weight.dist.coord.mat[fr.to.pcnm2]
+        res <- moran.I.multi(mypcnm.all$vectors, link=fr.to.pcnm2, weight=weight)
+        Moran <- res$res.mat[,1:2]
+        positive <- rep(FALSE,length(mypcnm.all$values))
+        positive[which(Moran[,1] > res$expected)] <- TRUE
+        Moran <- cbind(as.data.frame(Moran), positive)
+        colnames(Moran) <- c("Moran","p.value","Positive")
+      }
+    })
+    a[3] <- sprintf("%2f",a[3])
+    if(!silent) cat("Time to compute PCNMs =",a[3]," sec",'\n')
+    if(is.null(thresh)) {
+      if(moran) {
+        res <- list(values=mypcnm.all$values, vectors=mypcnm.all$vectors, Moran_I=Moran, expected_Moran=res$expected, spanning=spanning, thresh=threshh+0.000001)
+      } else {
+        res <- list(values=mypcnm.all$values, vectors=mypcnm.all$vectors, spanning=spanning, thresh=threshh+0.000001)
+      }
+    } else {
+      if(moran) {
+        res <- list(values=mypcnm.all$values, vectors=mypcnm.all$vectors, Moran_I=Moran, expected_Moran=res$expected, thresh=thresh)
+      } else {
+        res <- list(values=mypcnm.all$values, vectors=mypcnm.all$vectors, thresh=threshh+0.000001)
+      }
+    }
+    res
+  }
+
+'pcoa.all' <- function(D, diagonal=0, all=FALSE, include.zero=FALSE, rn=NULL)
+  # Principal coordinate decomposition of a square distance matrix D
+  # Get the eigenvectors corresponding to all eigenvalues, positive and negative
+  # Pierre Legendre, 2005, 2007
+  #
+  # D : A distance matrix of class 'dist' or 'matrix'.
+  # all : If TRUE, the eigenvectors corresponding to all eigenvalues, positive and negative, are shown in the output list.
+  # include.zero : If FALSE (default value), the zero eigenvalues as well as their eigenvectors are excluded from the output list.
+  # rn : An optional vector of row names, of length n, for the objects.
+{
+  epsilon <- sqrt(.Machine$double.eps) 
+  # replace by: 	epsilon <- .Machine$double.eps * 10^2
+  D <- as.matrix(D)
+  n <- nrow(D)
+  D <- D + diag(rep(diagonal,n))
+  
+  # Gower centring, matrix formula
+  One <- matrix(1,n,n)
+  mat <- diag(n) - One/n
+  Dpr2 <- -0.5 * mat %*% (D^2) %*% mat
+  trace <- sum(diag(Dpr2))
+  
+  # Eigenvalue decomposition
+  D.eig <- eigen(Dpr2, symmetric=TRUE)
+  rel.values <- D.eig$values/trace
+  rel.cum <- cumsum(rel.values)
+  if(length(rn)!=0) {
+    rownames(D.eig$vectors) <- rn
+  } else {
+    rownames(D.eig$vectors) <- rownames(D)
+  }
+  
+  # Output the results: k eigenvalues and eigenvectors
+  if(all) {
+    select <- 1:n
+    if(!include.zero) {
+      exclude <- which(abs(D.eig$values) < epsilon)
+      select <- select[-exclude]
+    }
+    k <- length(select)
+    res <- list(values=D.eig$values[select], rel.values=rel.values[select], rel.cum.values=rel.cum[select], vectors=D.eig$vectors[,select], trace=trace)
+    # cat("k =",k,"Select =",select,'\n')
+    
+  } else {
+    
+    k <- length(which(D.eig$values > epsilon))		
+    weight <- sqrt(D.eig$values[1:k])
+    if(k == 1) {
+      vectors <- D.eig$vectors[,1]*sqrt(D.eig$values[1])
+    } else {
+      vectors <- D.eig$vectors[,1:k]%*%diag(weight)
+    }
+    res <- list(values=D.eig$values[1:k], rel.values=rel.values[1:k], rel.cum.values=rel.cum[1:k], vectors=vectors, trace=trace)
+  }
+  res
+}
+Spa=read.table("Spa.txt",row.names=1,header=T) #Geographical coordinates of sites
+jlr.spa<-(dist(Spa))
+jlr.spa.dbMEM <- PCNM(jlr.spa)
+jlr.spa.dbMEM$Moran_I##three eignevectors are selected (#1,#2,#3)
+dbMEM_vectors<-jlr.spa.dbMEM$vectors
+all_vectors<-data.frame(dist_vectors,dam_vectors,dbMEM_vectors)
+write.csv(all_vectors, "all_vectors.csv")#keep only those with positive and significant Moran's I
+#####################################################################################################################################
+#Variation partitioning
+setwd("C:/JLR_ANALYSES/var_part")
+library(vegan)
+#Bacterioplankton in dry season
+Bact_dry=read.table("Bact_dry.txt",row.names=1,header=T)
+Env_dry=read.table("Env_dry.txt",row.names=1,header=T)
+spa_eigen=read.table("spa_eigen.txt",row.names=1,header=T)
+#Forward selection 1
+library(packfor)
+spa_eigen_f=forward.sel(Bact_dry,spa_eigen,nperm=999, alpha = 0.05) 
+selected.spa_eigen_dry=spa_eigen[,spa_eigen_f$order] 
+Env_dry_f=forward.sel(Bact_dry,Env_dry,nperm=999, alpha = 0.05)
+selected.Env_dry_f=Env_dry[,Env_dry_f$order] 
+#variation partitioning for bacteria in dry season
+varpart(Bact_dry, selected.spa_eigen_dry,selected.Env_dry_f) 
+plot(varpart(Bact_dry, selected.spa_eigen_dry,selected.Env_dry_f)) 
+Sig.test.spa_bact_dry=rda(Bact_dry ,selected.spa_eigen_dry)
+Sig.test.env_bact_dry=rda(Bact_dry,selected.Env_dry_f)
+anova(Sig.test.spa_bact_dry, step=200, perm.max=200)
+anova(Sig.test.env_bact_dry, step=200, perm.max=200)
+#==================================================================================================================
+setwd("C:/JLR_ANALYSES/dist_decay")
+library(ggplot2)
+library(vegan)
+#BACTERIOPLANKTON
+#Get jaccard dissimirality matrix
+#Dry
+Bact_dry<- read.table("Bact_dry.txt", row.names=1,header=T)
+Bact_dry_jac<-vegdist(Bact_dry, "jaccard")
+Bact_dry_jac_vec<-as.vector(Bact_dry_jac)
+write.csv(Bact_dry_jac_vec, "Bact_dry_jac_vec.csv")
+#Wet
+Bact_wet<- read.table("Bact_wet.txt", row.names=1,header=T)
+Bact_wet_jac<-vegdist(Bact_wet, "jaccard")
+Bact_wet_jac_vec<-as.vector(Bact_wet_jac)
+write.csv(Bact_wet_jac_vec, "Bact_wet_jac_vec.csv")
+#Spatial (distance) real distance between pairs of sampling sites (in km).
+#Linear regression to get r-squared and p-value
+#wet
+Bact_com_Spa_wet<-read.table("Bact_com_Spa_wet.txt", row.names=1,header=T) #combined distance and dissimirality
+head(Bact_com_Spa_wet)
+Bact_wet_lm= lm(Dissimirality ~  Distance, data=Bact_com_Spa_wet) 
+summary(Bact_wet_lm)
+#dry
+Bact_com_Spa_dry<-read.table("Bact_com_Spa_dry.txt", row.names=1,header=T) #combined distance and dissimirality
+head(Bact_com_Spa_dry)
+Bact_dry_lm= lm(Dissimirality ~  Distance, data=Bact_com_Spa_dry) 
+summary(Bact_dry_lm)
+
+#PHYTOPLANKTON
+#Get bray-Curtis simirality matrix
+#Dry
+Phyt_dry<- read.table("Phyt_dry.txt", row.names=1,header=T)
+Phyt_dry_log<-log1p(Phyt_dry)
+Phyt_dry_bray<-vegdist(Phyt_dry_log, "bray")
+Phyt_dry_bray_vec<-as.vector(Phyt_dry_bray)
+write.csv(Phyt_dry_bray_vec, "Phyt_dry_bray_vec.csv")
+#Wet
+Phyt_wet<- read.table("Phyt_wet.txt", row.names=1,header=T)
+Phyt_wet_log<-log1p(Phyt_wet)
+Phyt_wet_bray<-vegdist(Phyt_wet_log, "bray")
+Phyt_wet_bray_vec<-as.vector(Phyt_wet_bray)
+write.csv(Phyt_wet_bray_vec, "Phyt_wet_bray_vec.csv")
+#Linear regression to get r-squared and p-value
+#wet
+Phyt_com_Spa_wet<-read.table("Phyt_com_Spa_wet.txt", row.names=1,header=T) #combined distance and dissimirality
+head(Phyt_com_Spa_wet)
+Phyt_wet_lm= lm(Simirality ~  Distance, data=Phyt_com_Spa_wet) 
+summary(Phyt_wet_lm)
+#dry
+Phyt_com_Spa_dry<-read.table("Phyt_com_Spa_dry.txt", row.names=1,header=T) #combined distance and dissimirality
+head(Phyt_com_Spa_dry)
+Phyt_dry_lm= lm(Simirality ~  Distance, data=Phyt_com_Spa_dry) 
+summary(Phyt_dry_lm)
+
+#Making a combined linear plot for bacterioplankton
+Bact_com_ddr<- read.table("Bact_com_ddr.txt", row.names=1,header=T)# a combination of dry and wet
+head(Bact_com_ddr)
+Bact_com_ddr_plot<-ggplot(Bact_com_ddr, aes(x=Distance, y=Dissimirality, shape=Season)) + geom_point() +
+  geom_smooth(aes(linetype=Season),method = "lm", colour="blue")+
+  scale_shape_manual(values=c(16,17))+theme_bw()
+
+
+
+ggsave("Bact_com_ddr_plot.pdf",  width=8,  height=8,  units="cm")
+
+#Making a combined linear plot for phytoplankton
+Phyt_com_ddr<- read.table("Phyt_com_ddr.txt", row.names=1,header=T)# a combination of dry and wet
+head(Phyt_com_ddr)
+Phyt_com_ddr_plot<-ggplot(Phyt_com_ddr, aes(x=Distance, y=Simirality, shape=Season)) + geom_point() +
+  geom_smooth(aes(linetype=Season),method = "lm", colour="blue")+
+  scale_shape_manual(values=c(16,17))+theme_bw()
+ggsave("Phyt_com_ddr_plot.pdf",  width=8,  height=8,  units="cm")
+
+Phyt_com_ddr<- read.table("Phyt_com_ddr.txt", row.names=1,header=T)# a combination of dry and wet
+head(Phyt_com_ddr)
+Phyt_com_ddr_plot<-ggplot(Phyt_com_ddr, aes(x=Distance, y=Simirality, shape=Season)) + geom_point() +
+  scale_shape_manual(values=c(16,17))+theme_bw()
+#=================================================================================================================
+setwd("C:/JLR_ANALYSES/var_part")
+library(packfor)
+library(vegan)
+Bact=read.table("Bact.txt",row.names=1,header=T)
+Bact_hel=decostand(Bact, "hellinger")
+Env=read.table("Env.txt",row.names=1,header=T)
+spa_eigen=read.table("spa_eigen.txt",row.names=1,header=T)
+#Forward selection for spatial factors on bacterioplankton
+spa_bact_f=forward.sel(Bact,spa_eigen,nperm=999, alpha = 0.05)
+selected_spa_bact=spa_eigen[,spa_bact_f$order] 
+#Forward selection for environmental factors on bacterioplankton
+env_bact_f=forward.sel(Bact_hel,Env,nperm=999, alpha = 0.05)
+selected_env_bact=Env[,env_bact_f$order] 
+#variation partitioning for bacterioplankton
+varpart(Bact_hel, selected_spa_bact,selected_env_bact) 
+plot(varpart(Bact_hel, selected_spa_bact,selected_env_bact))
+#======================================================================================================
+Phyt=read.table("Phyt.txt",row.names=1,header=T)
+Phyt_log=log1p(Phyt)
+Phyt_hel=decostand(Phyt_log, "hellinger")
+#Forward selection for spatial factors on Phytoplankton
+spa_phyt_f=forward.sel(Phyt_hel,spa_eigen,nperm=999, alpha = 0.05)
+selected_spa_phyt=spa_eigen[,spa_phyt_f$order] 
+#Forward selection for environmental factors on Phyterioplankton
+env_phyt_f=forward.sel(Phyt_hel,Env,nperm=999, alpha = 0.05)
+selected_env_phyt=Env[,env_phyt_f$order] 
+#variation partitioning for Phyterioplankton
+varpart(Phyt_hel, selected_spa_phyt,selected_env_phyt) 
+plot(varpart(Phyt_hel, selected_spa_phyt,selected_env_phyt))
+#============================================================================================================
+#plotting variation partitioning results
+library(ggplot2)
+results=read.table("results.txt",row.names=1,header=T)
+head(results)
+p<-ggplot(results,  aes(x=Portion,  y=Adj_R)) + geom_bar(stat="identity", fill="lightblue", colour="black")
+j<-p + facet_grid(Season~ Community)
+j+theme_bw()+coord_flip()
+#======================================================================================================================
+#plotting variation partitioning for graphical abstr
+library(ggplot2)
+for_ga=read.table("for_ga.txt",row.names=1,header=T)
+p<-ggplot(for_ga,  aes(x=Portion,  y=Adj_R)) + geom_bar(stat="identity", fill="lightblue", colour="black")
+j<-p + facet_grid(Season~ Community)
+j+theme_bw()+coord_flip()
+#==============================================================================================================================
+#PCA and Violin plot
+setwd("C:/JLR_ANALYSES/pca_plot")
+All=read.table("All_wet.txt",row.names=1,header=T)#all data of the wet season
+library(ggplot2)
+library("devtools")
+library("factoextra")
+pca<- princomp(All, cor=TRUE)
+pca_plot<-fviz_pca_biplot(pca)+theme_bw()
+pca_plot
+library(stats)
+phyla=read.table("phyla.txt",row.names=1,header=T)
+head(phyla)
+p<-ggplot(phyla,  aes(x=interaction(Factor,  Phyla),  y=Biomass))+ geom_violin() +theme_bw()+coord_flip()
+p
+#======================================================================================================================
+setwd("C:/JLR_ANALYSES/raup_crick")
+library(vegan)
+Bact_dry=read.table("Bact_dry.txt",row.names=1,header=T)
+Bact_wet=read.table("Bact_wet.txt",row.names=1,header=T)
+Phyt_dry=read.table("Phyt_dry.txt",row.names=1,header=T)
+Phyt_wet=read.table("Phyt_wet.txt",row.names=1,header=T)
+#Raup-crick coefficients for bacterioplankton
+Bact_dry_raup <- vegdist(Bact_dry, method = "raup")
+Bact_wet_raup <- vegdist(Bact_wet, method = "raup")
+#Raup-crick coefficients for phytoplankton
+Phyt_dry=read.table("Phyt_dry.txt",row.names=1,header=T)
+Phyt_wet=read.table("Phyt_wet.txt",row.names=1,header=T)
+Phyt_dry_presabs<-ifelse(Phyt_dry>0,1,0) 
+Phyt_wet_presabs<-ifelse(Phyt_wet>0,1,0) 
+Phyt_dry_raup <- vegdist(Phyt_dry_presabs, method = "raup")
+Phyt_wet_raup <- vegdist(Phyt_wet_presabs, method = "raup")
+
+#Making datasets
+Bact_dry_raup_data<- as.vector(Bact_dry_raup)
+Bact_wet_raup_data<- as.vector(Bact_wet_raup)
+Phyt_dry_raup_data<- as.vector(Phyt_dry_raup)
+Phyt_wet_raup_data<- as.vector(Phyt_wet_raup)
+all_data<-data.frame(Bact_dry_raup_data,Bact_wet_raup_data,Phyt_dry_raup_data,Phyt_wet_raup_data)
+write.csv(all_data, "all_data.csv")
+library(ggplot2)
+data=read.table("data.txt",row.names=1,header=T)
+head(data)
+p<-ggplot(data,  aes(x=interaction(Season,  Community),  y=Coefficient))+ geom_violin(aes(colour=data$Season)) +coord_flip()+theme_bw()
+p + coord_cartesian(ylim = c(-1,-0.95,0,0.95,1))
+p + scale_fill_manual(values=data$Community)
+p+ facet_grid(Community ~ . )
+
+
+
+mean(Bact_dry_raup_data)
+mean(Bact_wet_raup_data)
+sd(Bact_dry_raup_data)
+sd(Bact_wet_raup_data)
+mean(Phyt_dry_raup_data)
+mean(Phyt_wet_raup_data)
+sd(Phyt_dry_raup_data)
+sd(Phyt_wet_raup_data)
+#=========================================================================================================================================
+setwd("C:/JLR_ANALYSES/suppl_fig1")
+a=read.table("EnvUntrans.txt",row.names=1,header=T)
+library(ggplot2)
+pd<-position_dodge(.1)
+ncol(a)
+#Temperature
+p<-ggplot(a,  aes(x=a$Site,  y=a$WT,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+WT<-p+theme(axis.text.x = element_text(angle=360,  hjust=1,  vjust=1))+coord_flip()
+WT
+
+#Conductivity
+p<-ggplot(a,  aes(x=a$Site,  y=a$Cond,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+Cond<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+Cond
+
+#Salinity
+p<-ggplot(a,  aes(x=a$Site,  y=a$Sal,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+Sal<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+Sal
+
+#pH
+p<-ggplot(a,  aes(x=a$Site,  y=a$pH,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+pH<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+pH
+
+#ORP
+p<-ggplot(a,  aes(x=a$Site,  y=a$ORP,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+ORP<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+ORP
+
+#DO
+p<-ggplot(a,  aes(x=a$Site,  y=a$DO,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+DO<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+DO
+
+#Chla
+p<-ggplot(a,  aes(x=a$Site,  y=a$Chla,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+Chla<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+Chla
+
+#Turb
+p<-ggplot(a,  aes(x=a$Site,  y=a$Turb,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+Turb<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+Turb
+
+#Vel
+p<-ggplot(a,  aes(x=a$Site,  y=a$Vel,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+Vel<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+Vel
+
+#SS
+p<-ggplot(a,  aes(x=a$Site,  y=a$SS,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+SS<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+SS
+
+#TN
+p<-ggplot(a,  aes(x=a$Site,  y=a$TN,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+TN<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+TN
+
+#WRT
+p<-ggplot(a,  aes(x=a$Site,  y=a$WRT,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+WRT<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+WRT
+
+#PO4P
+p<-ggplot(a,  aes(x=a$Site,  y=a$PO4P,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+PO4P<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+PO4P
+
+#DIN
+p<-ggplot(a,  aes(x=a$Site,  y=a$DIN,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+DIN<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+DIN
+
+
+#TP
+p<-ggplot(a,  aes(x=a$Site,  y=a$TP,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+TP<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+TP
+
+
+#TC
+p<-ggplot(a,  aes(x=a$Site,  y=a$TC,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+TC<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+TC
+
+
+#TOC
+p<-ggplot(a,  aes(x=a$Site,  y=a$TOC,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+TOC<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+TOC
+
+
+#TN.TP
+p<-ggplot(a,  aes(x=a$Site,  y=a$TN.TP,  fill=a$Season)) + geom_line(position=pd,aes(group=Season)) +
+  geom_point(aes(shape=factor(Season)),size=2)+geom_line()+theme_classic()
+TN.TP<-p+theme(axis.text.x = element_text(angle=0,  hjust=1,  vjust=1))+coord_flip()
+TN.TP
+
+library(stats)
+head(a)
+aov.TC= aov(a$TC ~ a$Season)
+summary(aov.TC)
+
+
+
+#============================================================================================================
+setwd("C:/JLR_ANALYSES/mantel_test_vegan")
+library(vegan)
+
+Phy_wet<-read.table("Phyt_wet.txt", header=T) 
+Phy_dry<-read.table("Phyt_dry.txt", header=T) 
+Bact_wet<-read.table("Bact_wet.txt", header=T) 
+Bact_dry<-read.table("Bact_dry.txt", header=T) 
+Env_wet<-read.table("Env_wet.txt", header=T) 
+Env_dry<-read.table("Env_dry.txt", header=T)
+Spa_dry<-read.table("Spa_dry.txt", header=T)
+Spa_wet<-read.table("Spa_wet.txt", header=T)
+P_wet<- sqrt(Phy_wet)
+P_dry<- sqrt(Phy_dry)
+Phyt_wet_dist<-vegdist(P_wet, "bray")
+Phyt_dry_dist<-vegdist(P_dry, "bray")
+Bact_wet_dist<-vegdist(Bact_wet, "jaccard")
+Bact_dry_dist<-vegdist(Bact_dry, "jaccard")
+Env_wet_dist<-vegdist(Env_wet, "euclidean")
+Env_dry_dist<-vegdist(Env_dry, "euclidean")
+Spa_dist_dry<-vegdist(Spa_dry, "euclidean")
+Spa_dist_wet<-vegdist(Spa_wet, "euclidean")
+
+#Bacterioplankton
+dry_Bact_env<-mantel(Bact_dry_dist,Env_dry_dist, method = "spear")
+dry_Bact_spa<-mantel(Bact_dry_dist,Spa_dist_dry, method = "spear")
+dry_Bact_spaenv<-mantel.partial(Bact_dry_dist,Spa_dist_dry,Env_dry_dist, method = "spear")
+dry_Bact_envspa<-mantel.partial(Bact_dry_dist,Env_dry_dist,Spa_dist_dry, method = "spear")
+Bact_dry_mantel<-data.frame(dry_Bact_env$statistic, dry_Bact_spa$statistic, dry_Bact_spaenv$statistic, dry_Bact_envspa$statistic)
+Bact_dry_signif<-data.frame(dry_Bact_env$signif, dry_Bact_spa$signif, dry_Bact_spaenv$signif, dry_Bact_envspa$signif)
+
+wet_Bact_env<-mantel(Bact_wet_dist,Env_wet_dist, method = "spear")
+wet_Bact_spa<-mantel(Bact_wet_dist,Spa_dist_wet, method = "spear")
+wet_Bact_spaenv<-mantel.partial(Bact_wet_dist,Spa_dist_wet,Env_wet_dist, method = "spear")
+wet_Bact_envspa<-mantel.partial(Bact_wet_dist,Env_wet_dist,Spa_dist_wet, method = "spear")
+Bact_wet_mantel<-data.frame(wet_Bact_env$statistic, wet_Bact_spa$statistic, wet_Bact_spaenv$statistic, wet_Bact_envspa$statistic)
+Bact_wet_signif<-data.frame(wet_Bact_env$signif, wet_Bact_spa$signif, wet_Bact_spaenv$signif, wet_Bact_envspa$signif)
+
+#Phytoplankton
+dry_Phyt_env<-mantel(Phyt_dry_dist,Env_dry_dist, method = "spear")
+dry_Phyt_spa<-mantel(Phyt_dry_dist,Spa_dist_dry, method = "spear")
+dry_Phyt_spaenv<-mantel.partial(Phyt_dry_dist,Spa_dist_dry,Env_dry_dist, method = "spear")
+dry_Phyt_envspa<-mantel.partial(Phyt_dry_dist,Env_dry_dist,Spa_dist_dry, method = "spear")
+Phyt_dry_mantel<-data.frame(dry_Phyt_env$statistic, dry_Phyt_spa$statistic, dry_Phyt_spaenv$statistic, dry_Phyt_envspa$statistic)
+Phyt_dry_signif<-data.frame(dry_Phyt_env$signif, dry_Phyt_spa$signif, dry_Phyt_spaenv$signif, dry_Phyt_envspa$signif)
+
+wet_Phyt_env<-mantel(Phyt_wet_dist,Env_wet_dist, method = "spear")
+wet_Phyt_spa<-mantel(Phyt_wet_dist,Spa_dist_wet, method = "spear")
+wet_Phyt_spaenv<-mantel.partial(Phyt_wet_dist,Spa_dist_wet,Env_wet_dist, method = "spear")
+wet_Phyt_envspa<-mantel.partial(Phyt_wet_dist,Env_wet_dist,Spa_dist_wet, method = "spear")
+Phyt_wet_mantel<-data.frame(wet_Phyt_env$statistic, wet_Phyt_spa$statistic, wet_Phyt_spaenv$statistic, wet_Phyt_envspa$statistic)
+Phyt_wet_signif<-data.frame(wet_Phyt_env$signif, wet_Phyt_spa$signif, wet_Phyt_spaenv$signif, wet_Phyt_envspa$signif)
+
+#Results
+Mantel_test_results<-data.frame(Bact_dry_mantel,Bact_dry_signif, Bact_wet_mantel, Bact_wet_signif, Phyt_dry_mantel, Phyt_dry_signif, Phyt_wet_mantel, Phyt_wet_signif)
+write.csv(Mantel_test_results, "Mantel.csv")
+
+####################################################################################
+setwd("C:/JLR_ANALYSES/diversity")
+library(gcookbook)
+library(plyr)
+library(ggplot2)
+
+Div=read.table("Diversity.txt",row.names=1,header=T)
+head(Div)
+
+p<-ggplot(Div,  aes(x=Season,  y=Value)) + geom_boxplot()
+p + facet_grid(.  ~ Index)+ theme_bw() 
+p 
+p + facet_grid(.  ~ Index)+ coord_flip()+ theme_bw()
+
+Shannon=read.table("Shannon.txt",row.names=1,header=T)
+Simpson=read.table("Simpson.txt",row.names=1,header=T)
+Evenness=read.table("Evenness.txt",row.names=1,header=T)
+Richness=read.table("Richness.txt",row.names=1,header=T)
+sh<-ggplot(Shannon,  aes(x=Season,  y=Value)) + geom_boxplot()
+si<-ggplot(Simpson,  aes(x=Season,  y=Value)) + geom_boxplot()
+ev<-ggplot(Evenness,  aes(x=Season,  y=Value)) + geom_boxplot()
+ri<-ggplot(Richness,  aes(x=Season,  y=Value)) + geom_boxplot()
+par(mfrow=c(2,2))
+sh + facet_grid(.  ~ Index)+ coord_flip()+ theme_bw()+ theme_bw() 
+si + facet_grid(.  ~ Index)+ coord_flip()+ theme_bw()+ theme_bw()
+ev + facet_grid(.  ~ Index)+ coord_flip()+ theme_bw()+ theme_bw()
+ri + facet_grid(.  ~ Index)+ coord_flip()+ theme_bw()+ theme_bw()
+
+setwd("C:/JLR_ANALYSES/plspm2")
+library(plspm)
+###Dry season
+dry=read.table("dry.txt",row.names=1,header=T)
+head(dry)
+Land=c(0,0,0,0,0)
+Phys=c(1,0,0,0,0)
+Nut=c(1,1,0,0,0)
+Phyt=c(1,1,1,0,0)
+Bact=c(1,1,1,1,0)
+path_mat=rbind(Land,Phys,Nut,Phyt,Bact)
+innerplot(path_mat)
+blocks=list(1:4,5:13,14:17,18,19)
+modes=c("A","A","A","A","A")
+sat_pls=plspm(dry, path_mat, blocks, modes=modes)
+summary(sat_pls)  
+plot(sat_pls, arr.pos = 0.35)
+Paths= sat_pls$path_coefs
+arrow_lwd =  10*round(Paths, 2)
+plot(sat_pls, arr.pos = 0.35, arr.lwd = arrow_lwd)
+###wet season
+wet=read.table("wet.txt",row.names=1,header=T)
+head(wet)
+Land=c(0,0,0,0,0)
+Phys=c(1,0,0,0,0)
+Nut=c(1,1,0,0,0)
+Phyt=c(1,1,1,0,0)
+Bact=c(1,1,1,1,0)
+path_mat=rbind(Land,Phys,Nut,Phyt,Bact)
+innerplot(path_mat)
+blocks=list(1:4,5:13,14:17,18,19)
+modes=c("A","A","A","A","A")
+sat_pls=plspm(wet, path_mat, blocks, modes=modes)
+summary(sat_pls)  
+plot(sat_pls, arr.pos = 0.35)
+Paths= sat_pls$path_coefs
+arrow_lwd =  10*round(Paths, 2)
+plot(sat_pls, arr.pos = 0.35, arr.lwd = arrow_lwd)
+
+
+
+
+#Distance decay of community dissimirality for bacterioplankton
+bactD<-vegdist(bactD, method="jaccard", binary=TRUE)
+bactW<-vegdist(bactW, method="jaccard", binary=TRUE)
+bactD.jacc<-dist(bactD, "binary")
+bactW.jacc<-dist(bactW, "binary")
+#Plotting for bacterioplankton
+BactDist<- read.table("bact_spa.txt", header=T) 
+head(BactDist)
+myplot<-ggplot(BactDist,aes(Space,Dissimilarity))+
+  geom_smooth(aes(linetype=Season),method = "lm")
+bp <-myplot +theme_bw()
+p++ coord_cartesian(ylim=c(0.40, 0.60))
+
+bp + coord_cartesian(ylim=c(0.40, 0.70)) + 
+  scale_y_continuous(breaks=seq(0.40, 0.70, 0.05))
+
+
+
+#Getting coefficients
+#Dry season
+Bact_Dry<- read.table("bact_dry.txt", header=T) 
+head(Bact_Dry)
+lm_bact_dry= lm(Space~ Dissimilarity, data=Bact_Dry) 
+summary(lm_bact_dry)
+#Wet season
+Bact_wet<- read.table("bact_wet.txt", header=T) 
+head(Bact_wet)
+lm_bact_wet= lm(Space~ Dissimilarity, data=Bact_wet) 
+summary(lm_bact_wet)
+
+#Distance decay of community dissimirality for Phytoplankton
+PhytD<- read.table("PhytD.txt", header=T) 
+PhytW<- read.table("PhytW.txt", header=T) 
+PhytD.log<- log1p(PhytD)
+PhytW.log<- log1p(PhytW)
+PhytD.bray<-vegdist(PhytD.log, method ="bray", binary = FALSE)
+PhytW.bray<-vegdist(PhytW.log, method = "bray", binary = FALSE)
+
+#Plotting for phytoplankton
+PhytDist<- read.table("Phyt_dist.txt", header=T) 
+head(PhytDist)
+myplot<-ggplot(PhytDist,aes(Distance,Similarity))+
+  geom_smooth(aes(linetype=Groups),method = "lm")
+by<-myplot+theme_bw()
+
+by + coord_cartesian(ylim=c(0.40, 0.65)) + 
+  scale_y_continuous(breaks=seq(0.40, 0.65, 0.05))
+#Getting coefficients
+#Dry season
+Phyt_Dry<- read.table("Phyt_dry.txt", header=T) 
+head(Phyt_Dry)
+lm_phyt_Dry= lm(Distance~ Similarity, data=Phyt_Dry) 
+summary(lm_phyt_Dry)
+#Wet season
+Phyt_wet<- read.table("Phyt_wet.txt", header=T) 
+head(Phyt_wet)
+lm_phyt_wet= lm(Distance~ Similarity, data=Phyt_wet) 
+summary(lm_phyt_wet)
+
+
+summary(lm_bact_dry)
+summary(lm_bact_wet)
+summary(lm_phyt_Dry)
+summary(lm_phyt_wet)
+#############################################################
+#The function used for raup-crick coefficient is from M. Chase, Jonathan; J. B. Kraft, Nathan; G. Smith, Kevin; Vellend, Mark; Inouye, Brian D (2016): Using null models to disentangle variation in community dissimilarity from variation in ??-diversity.
+
+raup_crick=function(spXsite, plot_names_in_col1=TRUE, classic_metric=FALSE, split_ties=TRUE, reps=9999, set_all_species_equal=FALSE, as.distance.matrix=TRUE, report_similarity=FALSE){
+  
+  ##expects a species by site matrix for spXsite, with row names for plots, or optionally plots named in column 1.  By default calculates a modification of the Raup-Crick metric (standardizing the metric to range from -1 to 1 instead of 0 to 1). Specifying classic_metric=TRUE instead calculates the original Raup-Crick metric that ranges from 0 to 1. The option split_ties (defaults to TRUE) adds half of the number of null observations that are equal to the observed number of shared species to the calculation- this is highly recommended.  The argument report_similarity defaults to FALSE so the function reports a dissimilarity (which is appropriate as a measure of beta diversity).  Setting report_similarity=TRUE returns a measure of similarity, as Raup and Crick originally specified.  If ties are split (as we recommend) the dissimilarity (default) and similarity (set report_similarity=TRUE) calculations can be flipped by multiplying by -1 (for our modification, which ranges from -1 to 1) or by subtracting the metric from 1 (for the classic metric which ranges from 0 to 1). If ties are not split (and there are ties between the observed and expected shared number of species) this conversion will not work. The argument reps specifies the number of randomizations (a minimum of 999 is recommended- default is 9999).  set_all_species_equal weights all species equally in the null model instead of weighting species by frequency of occupancy.  
+  
+  
+  ##Note that the choice of how many plots (rows) to include has a real impact on the metric, as species and their occurrence frequencies across the set of plots is used to determine gamma and the frequency with which each species is drawn from the null model	
+  
+  
+  ##this section moves plot names in column 1 (if specified as being present) into the row names of the matrix and drops the column of names
+  if(plot_names_in_col1){
+    row.names(spXsite)<-spXsite[,1]
+    spXsite<-spXsite[,-1]
+  }
+  
+  
+  ## count number of sites and total species richness across all plots (gamma)
+  n_sites<-nrow(spXsite)
+  gamma<-ncol(spXsite)
+  
+  ##make the spXsite matrix into a pres/abs. (overwrites initial spXsite matrix):
+  ceiling(spXsite/max(spXsite))->spXsite
+  
+  ##create an occurrence vector- used to give more weight to widely distributed species in the null model:
+  occur<-apply(spXsite, MARGIN=2, FUN=sum)
+  
+  
+  ##NOT recommended- this is a non-trivial change to the metric:
+  ##sets all species to occur with equal frequency in the null model
+  ##e.g.- discards any occupancy frequency information
+  if(set_all_species_equal){
+    occur<-rep(1,gamma)
+  }
+  
+  
+  ## determine how many unique species richness values are in the dataset
+  ##this is used to limit the number of null communities that have to be calculated
+  alpha_levels<-sort(unique(apply(spXsite, MARGIN=1, FUN=sum)))
+  
+  ##make_null:
+  
+  ##alpha_table is used as a lookup to help identify which null distribution to use for the tests later.  It contains one row for each combination of alpha richness levels. 
+  
+  alpha_table<-data.frame(c(NA), c(NA))
+  names(alpha_table)<-c("smaller_alpha", "bigger_alpha")
+  col_count<-1
+  
+  ##null_array will hold the actual null distribution values.  Each element of the array corresponds to a null distribution for each combination of alpha values.  The alpha_table is used to point to the correct null distribution- the row numbers of alpha_table correspond to the [[x]] indices of the null_array.  Later the function will find the row of alpha_table with the right combination of alpha values.  That row number is used to identify the element of null_array that contains the correct null distribution for that combination of alpha levels. 
+  
+  
+  null_array<-list()
+  
+  ##looping over each combination of alpha levels:
+  
+  for(a1 in 1:length(alpha_levels)){
+    for(a2 in a1:length(alpha_levels)){
+      
+      ##build a null distribution of the number of shared species for a pair of alpha values:
+      null_shared_spp<-NULL
+      for(i in 1:reps){
+        
+        ##two empty null communities of size gamma:
+        com1<-rep(0,gamma)
+        com2<-rep(0,gamma)
+        
+        ##add alpha1 number of species to com1, weighting by species occurrence frequencies:
+        com1[sample(1:gamma, alpha_levels[a1], replace=FALSE, prob=occur)]<-1
+        
+        
+        ##same for com2:
+        com2[sample(1:gamma, alpha_levels[a2], replace=FALSE, prob=occur)]<-1
+        
+        ##how many species are shared in common?
+        null_shared_spp[i]<-sum((com1+com2)>1)
+        
+      }
+      
+      
+      ##store null distribution, record values for alpha 1 and 2 in the alpha_table to help find the correct null distribution later:
+      null_array[[col_count]]<-null_shared_spp
+      
+      alpha_table[col_count, which(names(alpha_table)=="smaller_alpha")]<-alpha_levels[a1]
+      alpha_table[col_count, which(names(alpha_table)=="bigger_alpha")]<-alpha_levels[a2]
+      
+      #increment the counter for the columns of the alpha table/ elements of the null array
+      col_count<-col_count+1
+      
+      
+      
+    }
+    
+  }
+  
+  ##create a new column with both alpha levels to match on:
+  alpha_table$matching<-paste(alpha_table[,1], alpha_table[,2], sep="_")
+  
+  
+  #####################
+  ##do the test:
+  
+  
+  
+  ##build a site by site matrix for the results, with the names of the sites in the row and col names:
+  results<-matrix(data=NA, nrow=n_sites, ncol=n_sites, dimnames=list(row.names(spXsite), row.names(spXsite)))
+  
+  
+  ##for each pair of sites (duplicates effort now to make a full matrix instead of a half one- but this part should be minimal time as compared to the null model building)
+  for(i in 1:n_sites){
+    for(j in 1:n_sites){
+      
+      ##how many species are shared between the two sites:
+      n_shared_obs<-sum((spXsite[i,]+spXsite[j,])>1)
+      
+      ## what was the observed richness of each site?
+      obs_a1<-sum(spXsite[i,])
+      obs_a2<-sum(spXsite[j,])
+      
+      ##place these alphas into an object to match against alpha_table (sort so smaller alpha is first)
+      obs_a_pair<-sort(c(obs_a1, obs_a2))
+      
+      ##match against the alpha table- row index identifies which element of the null array contains the correct null distribution for the observed combination of alpha values:
+      null_index<-which(alpha_table$matching==paste(obs_a_pair[1], obs_a_pair[2], sep="_"))
+      
+      ##how many null observations is the observed value tied with?
+      num_exact_matching_in_null<-sum(null_array[[null_index]]==n_shared_obs)
+      
+      ##how many null values are bigger than the observed value?
+      num_greater_in_null<-sum(null_array[[null_index]]>n_shared_obs)
+      
+      
+      
+      rc<-(num_greater_in_null)/reps
+      
+      
+      
+      
+      if(split_ties){
+        
+        rc<-((num_greater_in_null+(num_exact_matching_in_null)/2)/reps)
+      }
+      
+      
+      
+      if(!classic_metric){
+        
+        ##our modification of raup crick standardizes the metric to range from -1 to 1 instead of 0 to 1
+        
+        rc<-(rc-.5)*2
+      }
+      
+      
+      ## at this point rc represents an index of dissimilarity- multiply by -1 to convert to a similarity as specified in the original 1979 Raup Crick paper
+      if(report_similarity & !classic_metric){
+        rc<- rc*-1
+      }
+      
+      ## the switch to similarity is done differently if the original 0 to 1 range of the metric is used:
+      if(report_similarity & classic_metric){
+        rc<- 1-rc
+      }
+      
+      
+      ##store the metric in the results matrix:
+      results[i,j]<-round(rc, digits=2)
+      
+      
+    }
+  }
+  
+  
+  if(as.distance.matrix){
+    results<-as.dist(results)
+  }	
+  
+  
+  return(results)
+  
+  
+  
+  
+  
+}
+
+#raup-crick for bacillariophyta
+bacil_dry=read.table("Bacillariophyta_dry.txt",row.names=1,header=T) 
+bacil_wet=read.table("Bacillariophyta_wet.txt",row.names=1,header=T) 
+d<-raup_crick(bacil_dry)
+w<-raup_crick(bacil_wet)
+bac_dry<-as.vector(d)
+bac_wet<-as.vector(w)
+
+
+#raup-crick for Chlorophyta
+Chlor_dry=read.table("Chlorophyta_dry.txt",row.names=1,header=T) 
+Chlor_wet=read.table("Chlorophyta_wet.txt",row.names=1,header=T) 
+d<-raup_crick(Chlor_dry)
+w<-raup_crick(Chlor_wet)
+chl_dry<-as.vector(d)
+chl_wet<-as.vector(w)
+
+
+#raup-crick for Cryptophyta
+Cry_dry=read.table("Cryptophyta_dry.txt",row.names=1,header=T) 
+Cry_wet=read.table("Cryptophyta_wet.txt",row.names=1,header=T) 
+d<-raup_crick(Cry_dry)
+w<-raup_crick(Cry_wet)
+cry_dry<-as.vector(d)
+cry_wet<-as.vector(w)
+
+#raup-crick for Cyanobacteria
+Cya_dry=read.table("Cyanobacteria_dry.txt",row.names=1,header=T) 
+Cya_wet=read.table("Cyanobacteria_wet.txt",row.names=1,header=T) 
+d<-raup_crick(Cya_dry)
+w<-raup_crick(Cya_wet)
+cya_dry<-as.vector(d)
+cya_wet<-as.vector(w)
+
+
+#raup-crick for Others
+Oth_dry=read.table("Others_dry.txt",row.names=1,header=T) 
+Oth_wet=read.table("Others_wet.txt",row.names=1,header=T) 
+d<-raup_crick(Oth_dry)
+w<-raup_crick(Oth_wet)
+oth_dry<-as.vector(d)
+oth_wet<-as.vector(w)
+
+
+#raup-crick for Bacterioplankton
+Bact_dry=read.table("Bacterioplankton_dry.txt",row.names=1,header=T) 
+Bact_wet=read.table("Bacterioplankton_wet.txt",row.names=1,header=T) 
+d<-raup_crick(Bact_dry)
+w<-raup_crick(Bact_wet)
+bact_dry<-as.vector(d)
+bact_wet<-as.vector(w)
+
+
+
+#Writing the results
+rc_results<-data.frame(bac_wet, bac_dry, cry_dry, cry_wet, chl_dry, chl_wet,cya_dry, cya_wet, oth_dry, oth_wet, bact_dry, bact_wet )
+write.csv(rc_results, "rc_results.csv" )
+
+library(ggplot2)
+results=read.table("results.txt",row.names=1,header=T) 
+head(results)
+p<-ggplot(results, aes(x = Phyl, y = RC, fill = Season)) +
+  geom_boxplot() 
+j<-p + theme_bw() 
+p<-j+coord_flip() 
+p
+
